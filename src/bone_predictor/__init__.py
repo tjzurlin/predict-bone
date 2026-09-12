@@ -1,6 +1,9 @@
-"""bone-predictor: Mechanistic Bone Turnover Modifiers & Hawkins PET Kinetics."""
+from typing import TYPE_CHECKING, Any
 
-from bone_predictor.biomarkers import BiomarkerModel
+if TYPE_CHECKING:
+    from bone_predictor.biomarkers import BiomarkerModel
+    from bone_predictor.turnover import TurnoverModel
+
 from bone_predictor.constants import (
     ADULT_TURNOVER_BASELINE,
     ASH_FRACTION,
@@ -35,7 +38,6 @@ from bone_predictor.physiology import (
     normalize_sex,
     skeletal_remodeling_balance,
 )
-from bone_predictor.turnover import TurnoverModel
 from bone_predictor.units import (
     ash_to_molar,
     ash_to_wet,
@@ -88,3 +90,22 @@ __all__ = [
     "wet_to_ash",
     "wet_to_molar",
 ]
+
+_LAZY_IMPORTS: dict[str, tuple[str, str]] = {
+    "BiomarkerModel": ("bone_predictor.biomarkers", "BiomarkerModel"),
+    "TurnoverModel": ("bone_predictor.turnover", "TurnoverModel"),
+}
+
+
+def __getattr__(name: str) -> Any:
+    """Lazy import handler (PEP 562) to avoid eager PyMC compilation overhead."""
+    if name in _LAZY_IMPORTS:
+        module_path, attr_name = _LAZY_IMPORTS[name]
+        import importlib
+
+        mod = importlib.import_module(module_path)
+        val = getattr(mod, attr_name)
+        globals()[name] = val
+        return val
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
