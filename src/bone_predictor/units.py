@@ -143,6 +143,37 @@ def molar_to_ash(
     return wet_to_ash(molar_to_wet(c_molar, molar_mass=molar_mass), ash_fraction=ash_fraction)
 
 
+#: Effective bone ash density relative to MCSim mineral volume compartment [kg ash / L mineral].
+#: Derivation: (ASH_FRACTION * skeletal_mass_fraction) / (V_Boc * f_BoMi)
+#:           = (0.56 * 0.085) / (0.0372 * 0.355) = 0.0476 / 0.01321 = 3.60 kg ash / L mineral
+#: See: run-model/papers/reports/boivin_turnover_to_pbpk_mapping.md
+RHO_ASH_MINERAL: float = 3.60
+
+
+def ash_to_mineral_vol(
+    c_ash: T,
+    rho_mineral: float = RHO_ASH_MINERAL,
+) -> T:
+    """Convert bone ash concentration (mg/kg ash) to mineral volume concentration (mg/L mineral)."""
+    arr = np.asarray(c_ash)
+    if np.any(arr < 0):
+        raise ValueError("Bone concentration must be non-negative")
+    res = arr * rho_mineral
+    return cast(T, float(res) if np.ndim(c_ash) == 0 else res)
+
+
+def mineral_vol_to_ash(
+    c_mineral: T,
+    rho_mineral: float = RHO_ASH_MINERAL,
+) -> T:
+    """Convert mineral volume concentration (mg/L mineral) to bone ash concentration (mg/kg ash)."""
+    arr = np.asarray(c_mineral)
+    if np.any(arr < 0):
+        raise ValueError("Bone concentration must be non-negative")
+    res = arr / rho_mineral
+    return cast(T, float(res) if np.ndim(c_mineral) == 0 else res)
+
+
 _UNIT_ALIASES: dict[str, str] = {
     "mg/kg_ash": "ash",
     "ppm_ash": "ash",
@@ -154,6 +185,9 @@ _UNIT_ALIASES: dict[str, str] = {
     "mmol/kg": "molar",
     "mmol/kg_wet": "molar",
     "molar": "molar",
+    "mg/l_mineral": "mineral",
+    "mg/l": "mineral",
+    "mineral": "mineral",
 }
 
 
@@ -163,6 +197,7 @@ def convert_concentration(
     to_unit: str,
     ash_fraction: float = ASH_FRACTION,
     molar_mass: float = MOLAR_MASS_FLUORINE,
+    rho_mineral: float = RHO_ASH_MINERAL,
 ) -> T:
     """Convert bone concentration between arbitrary supported units.
 
@@ -170,6 +205,7 @@ def convert_concentration(
     - Ash: 'mg/kg_ash', 'ppm_ash', 'ash'
     - Wet: 'mg/kg_wet', 'ppm_wet', 'ppm', 'wet'
     - Molar: 'mmol/kg', 'mmol/kg_wet', 'molar'
+    - Mineral: 'mg/l_mineral', 'mg/l', 'mineral'
 
     Parameters
     ----------
@@ -213,6 +249,9 @@ def convert_concentration(
         wet = ash_to_wet(value, ash_fraction=ash_fraction)
     elif u_from == "molar":
         wet = molar_to_wet(value, molar_mass=molar_mass)
+    elif u_from == "mineral":
+        c_ash = mineral_vol_to_ash(value, rho_mineral=rho_mineral)
+        wet = ash_to_wet(c_ash, ash_fraction=ash_fraction)
     else:
         wet = float(arr) if np.ndim(value) == 0 else arr
 
@@ -221,5 +260,8 @@ def convert_concentration(
         return wet_to_ash(wet, ash_fraction=ash_fraction)
     elif u_to == "molar":
         return wet_to_molar(wet, molar_mass=molar_mass)
+    elif u_to == "mineral":
+        c_ash = wet_to_ash(wet, ash_fraction=ash_fraction)
+        return ash_to_mineral_vol(c_ash, rho_mineral=rho_mineral)
     else:
         return cast(T, wet)
